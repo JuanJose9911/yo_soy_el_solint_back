@@ -1,0 +1,124 @@
+version: "3"
+
+networks:
+  laravel:
+  web:
+    external: true
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    restart: always
+    ports:
+      - 80
+    container_name: solint_nginx
+    environment:
+      VIRTUAL_HOST: api.creditos.sacas.com.co
+      VIRTUAL_PORT: 80
+      LETSENCRYPT_HOST: api.creditos.sacas.com.co
+      LETSENCRYPT_EMAIL: desarrollo@infinityprime.com.co
+    volumes:
+      - ./:/var/www/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+      - mysql
+    networks:
+      - laravel
+      - web
+
+  # Scheduler: Revisa tareas programadas cada minuto
+  scheduler:
+    build: .
+    container_name: solint_scheduler
+    environment:
+      TZ: America/Bogota
+    restart: always
+    command: sh run-scheduler.sh
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - laravel
+
+
+  mysql:
+    image: mariadb
+    container_name: solint_mysql
+    restart: always
+    volumes:
+      - /var/docker-data/solint-mysql-data:/var/lib/mysql
+    ports:
+      - 3306
+    environment:
+      MYSQL_DATABASE: solint
+      TZ: UTC
+      MYSQL_USER: solint
+      MYSQL_PASSWORD: solint
+      MYSQL_ROOT_PASSWORD: solint
+      SERVICE_NAME: mysql
+    networks:
+      - laravel
+      - web
+
+  php:
+    build: .
+    container_name: solint_php
+    environment:
+      TZ: America/Bogota
+    restart: always
+    volumes:
+      - ./:/var/www/html
+    ports:
+      - 9000
+    networks:
+      - laravel
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    container_name: solint_phpmyadmin
+    environment:
+      VIRTUAL_HOST: pma.creditos.sacas.com.co
+      VIRTUAL_PORT: 80
+      LETSENCRYPT_HOST: pma.creditos.sacas.com.co
+      LETSENCRYPT_EMAIL: desarrollo@infinityprime.com.co
+      PMA_HOST: mysql
+      MYSQL_ROOT_PASSWORD: solint
+      TZ: America/Bogota
+    ports:
+      - 80
+    depends_on:
+      - mysql
+    networks:
+      - laravel
+      - web
+
+  # Importante para usar docker-compose run --rm composer install (por ejemplo)
+  composer:
+    image: composer:latest
+    container_name: composer
+    volumes:
+      - ./:/var/www/html
+    working_dir: /var/www/html
+    environment:
+      TZ: America/Bogota
+    depends_on:
+      - php
+    networks:
+      - laravel
+
+  # Importante para usar docker-compose run --rm artisan migrate (por ejemplo)
+  artisan:
+    build: .
+    container_name: artisan
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    entrypoint: [ "php", "/var/www/html/artisan" ]
+    networks:
+      - laravel
